@@ -1,0 +1,6 @@
+dados/
+modelos/
+relatorios/
+hand_landmarker.task
+__pycache__/
+.venv/
