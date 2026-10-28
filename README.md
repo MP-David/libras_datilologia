@@ -1,4 +1,4 @@
-#Tradutor do alfabeto manual (datilologia) em LIBRAS
+# Tradutor do alfabeto manual (datilologia) em LIBRAS
 
 Reconhece letras do alfabeto manual a partir de fotos, clipes ou webcam e monta a
 palavra soletrada. Saída sempre em um destes formatos:
