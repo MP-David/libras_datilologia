@@ -88,7 +88,7 @@ Relação com as aulas: classificação supervisionada com **métricas por class
 
 ## Tech stack
 
-Python 3.12, CPU comum (testado num Mac com Apple M3; GPU opcional), sem serviço em nuvem.
+Python 3.12, CPU comum
 
 | Biblioteca | Versão testada | Papel |
 |---|---|---|
