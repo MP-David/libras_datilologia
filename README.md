@@ -110,11 +110,17 @@ MediaPipe), YuNet e SFace (OpenCV Zoo), MobileNetV3-Small (torchvision).
 ## Setup
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+git clone https://github.com/MP-David/libras_datilologia.git && cd libras_datilologia
+python3.12 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+python -m libras.traduzir --camera 0                    # já funciona: os modelos vêm no repositório
 ```
-Python 3.10+ (confira se existe wheel do `mediapipe` para a sua versão). Na primeira
-execução o modelo `hand_landmarker.task` (~8 MB) é baixado automaticamente do Google.
+- Use **Python 3.12** e as versões exatas de `requirements.txt`: os modelos em `modelos/`
+  foram salvos com joblib e só abrem com segurança nas mesmas versões de scikit-learn e torch.
+- **Modelos prontos:** `modelos/estatico.joblib` e `modelos/dinamico.joblib` são os do
+  treino de 16/11/2026 (pessoas p02 e p06 fora do treino, para o teste). Treinar de novo só é
+  preciso com dados novos — o zip da equipe e a pasta `dados/` não estão no repositório.
+- Na primeira execução o modelo `hand_landmarker.task` (~8 MB) é baixado automaticamente do Google.
 
 ## Processo de dados e treinamento
 

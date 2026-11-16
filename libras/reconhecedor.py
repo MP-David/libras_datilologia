@@ -44,9 +44,24 @@ class Evento:
 
 
 def carregar_modelos(pasta: Path = config.DIR_MODELOS):
-    est = ModeloLetras.carregar(pasta / "estatico.joblib")
-    p = pasta / "dinamico.joblib"
-    din = ModeloLetras.carregar(p) if p.exists() else None
+    arq_est = pasta / "estatico.joblib"
+    if not arq_est.exists():
+        raise SystemExit(
+            f"Modelo não encontrado: {arq_est}\n"
+            "O repositório traz os modelos treinados em modelos/. Se eles foram apagados ou\n"
+            "você quer treinar de novo, siga o README: libras.contribuido -> libras.extrair ->\n"
+            "libras.treinar --teste contrib_p02,contrib_p06")
+    try:
+        est = ModeloLetras.carregar(arq_est)
+        p = pasta / "dinamico.joblib"
+        din = ModeloLetras.carregar(p) if p.exists() else None
+    except Exception as e:   # pickle de outra versão de scikit-learn/torch
+        raise SystemExit(
+            f"Não consegui abrir os modelos em {pasta} ({type(e).__name__}: {e}).\n"
+            "Eles foram salvos com as versões de requirements.txt; instale exatamente essas\n"
+            "versões (pip install -r requirements.txt) ou treine de novo com libras.treinar.") from e
+    if din is None:
+        print("AVISO: modelos/dinamico.joblib não encontrado — H, J, K, X, Y e Z não serão reconhecidas.")
     return est, din
 
 
