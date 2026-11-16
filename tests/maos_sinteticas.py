@@ -1,21 +1,15 @@
-"""Gera pontos de mão SINTÉTICOS para testar o pipeline sem câmera.
+"""Mãos SINTÉTICAS usadas apenas pelos testes unitários (tests/test_pipeline.py).
 
-    python -m libras.sintetico --sinalizadores 6
-    python -m libras.treinar --teste s5
-
-Os números obtidos com isto NÃO dizem nada sobre LIBRAS real: as
-configurações de mão são inventadas (com A/S/E e M/N propositalmente
-parecidas). Serve só para conferir que coleta->treino->relatório->tradutor
-funcionam de ponta a ponta. Grava em dados/processados/amostras_sinteticas.joblib.
+Geram pontos de mão com geometria controlada para testar invariâncias,
+regras de rejeição e a máquina de estados do tradutor sem câmera nem MediaPipe.
+NÃO são dados de LIBRAS: as configurações de mão são inventadas. Este módulo
+não grava dataset nem relatório e não deve ser usado para treinar o modelo real.
 """
 from __future__ import annotations
 
-import argparse
-
-import joblib
 import numpy as np
 
-from . import config
+from libras import config
 
 BASES = {1: (-0.35, -0.30), 5: (-0.32, -0.95), 9: (-0.08, -1.0), 13: (0.14, -0.95), 17: (0.33, -0.85)}
 SEGS = [0.42, 0.26, 0.20]
@@ -130,25 +124,3 @@ def sequencia_dinamica(l, pose, rng, tam):
     for i in rng.choice(T, size=int(T * 0.1), replace=False):   # quadros perdidos
         seq[i] = np.nan
     return seq
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--sinalizadores", type=int, default=6)
-    ap.add_argument("--seed", type=int, default=7)
-    a = ap.parse_args()
-    rng = np.random.default_rng(a.seed)
-    tpl = modelos_letras(rng)
-    banco = {"estaticas": [], "dinamicas": [], "falhas": [], "vistos": {}, "templates": tpl}
-    for i in range(a.sinalizadores):
-        e, d = gerar_sinalizador(f"s{i}", tpl, rng)
-        banco["estaticas"] += e
-        banco["dinamicas"] += d
-    config.DIR_PROCESSADOS.mkdir(parents=True, exist_ok=True)
-    destino = config.DIR_PROCESSADOS / "amostras_sinteticas.joblib"
-    joblib.dump(banco, destino)
-    print(f"{len(banco['estaticas'])} estáticas e {len(banco['dinamicas'])} sequências -> {destino}")
-
-
-if __name__ == "__main__":
-    main()

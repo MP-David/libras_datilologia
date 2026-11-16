@@ -21,6 +21,17 @@ URL_MODELO_MEDIAPIPE = (
     "hand_landmarker/float16/latest/hand_landmarker.task"
 )
 
+# Dataset contribuído (zip sem identificação de pessoa): libras/contribuido.py
+# agrupa as gravações por rosto para separar treino/validação/teste POR PESSOA.
+DIR_CONTRIBUIDO = RAIZ / "dados" / "contribuido"      # CSV de pessoas + folha de conferência
+PREFIXO_CONTRIBUIDO = "contrib_"                       # dados/brutos/contrib_p01/...
+DIR_MODELOS_ROSTO = RAIZ / "dados" / "modelos_rosto"
+URL_ZOO_OPENCV = "https://github.com/opencv/opencv_zoo/raw/main/models/"
+MODELOS_ROSTO = {   # detector YuNet + reconhecedor SFace (OpenCV Zoo)
+    "detector": "face_detection_yunet/face_detection_yunet_2023mar.onnx",
+    "reconhecedor": "face_recognition_sface/face_recognition_sface_2021dec.onnx",
+}
+
 # --------------------------------------------------------------------------
 # Alfabeto
 # --------------------------------------------------------------------------

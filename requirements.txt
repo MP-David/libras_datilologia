@@ -1,8 +1,11 @@
 mediapipe>=0.10.14
-opencv-python>=4.8
+opencv-python>=4.8     # inclui o detector/reconhecedor de rosto usado em libras/contribuido.py
 numpy>=1.24
 scikit-learn>=1.3
 pandas>=2.0
 matplotlib>=3.7
 joblib>=1.3
+torch>=2.2             # modelo de sequência com atenção (libras/sequencia.py) e comparação com CNN
+torchvision>=0.17      # MobileNetV3 pré-treinada (libras/comparar_cnn.py)
+pillow>=10
 pytest>=7   # opcional, para rodar os testes

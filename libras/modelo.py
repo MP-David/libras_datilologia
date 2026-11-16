@@ -84,7 +84,19 @@ def com_contexto(seq: np.ndarray, poses: list, rng: np.random.Generator) -> np.n
     return np.concatenate(partes).astype(np.float32)
 
 
-def matriz_dinamica(amostras, aumentos: int = 0, seed: int = 0, contexto: dict | None = None):
+def vetor_sequencia(seq: np.ndarray, mao: str, atributos: str = "dinamicas"):
+    """Atributos de um clipe para o modelo de movimento.
+    'dinamicas': vetor resumo (features.features_dinamicas) -> modelos clássicos
+    'quadros'  : atributos quadro a quadro (sequencia.quadros_sequencia) -> atenção"""
+    if atributos == "quadros":
+        from .sequencia import quadros_sequencia
+        f = quadros_sequencia(seq, mao)
+        return None if f is None else f.ravel()
+    return features_dinamicas(seq, mao)
+
+
+def matriz_dinamica(amostras, aumentos: int = 0, seed: int = 0, contexto: dict | None = None,
+                    atributos: str = "dinamicas"):
     """contexto: {sinalizador: [poses estáticas]} para o aumento com troca de letra."""
     rng = np.random.default_rng(seed)
     X, y, g = [], [], []
@@ -93,7 +105,7 @@ def matriz_dinamica(amostras, aumentos: int = 0, seed: int = 0, contexto: dict |
         versoes = [s["seq"]] + [com_contexto(aumentar_sequencia(s["seq"], rng), poses, rng)
                                 for _ in range(aumentos)]
         for v in versoes:
-            f = features_dinamicas(v, s["mao"])
+            f = vetor_sequencia(v, s["mao"], atributos)
             if f is None:
                 continue
             X.append(f)
@@ -118,6 +130,17 @@ def candidatos(seed: int = 0) -> dict:
                                                              random_state=seed)),
         "logistica": make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=4000,
                                                                        class_weight="balanced")),
+    }
+
+
+def candidatos_movimento(seed: int = 0) -> dict:
+    """Modelo de movimento: {nome: (estimador, atributos)}."""
+    from .sequencia import AtencaoSequencia
+    c = candidatos(seed)
+    return {
+        "logistica": (c["logistica"], "dinamicas"),
+        "mlp": (c["mlp"], "dinamicas"),
+        "atencao": (AtencaoSequencia(seed=seed), "quadros"),
     }
 
 
@@ -162,9 +185,13 @@ class ModeloLetras:
     limiar: float = config.LIMIAR_CONFIANCA
     margem: float = config.MARGEM_MINIMA
     info: dict = field(default_factory=dict)
+    atributos: str = "dinamicas"   # só para o modelo de movimento: ver vetor_sequencia
 
     def probs(self, X: np.ndarray) -> np.ndarray:
         return self.estimador.predict_proba(np.atleast_2d(X))
+
+    def vetor(self, seq: np.ndarray, mao: str):
+        return vetor_sequencia(seq, mao, getattr(self, "atributos", "dinamicas"))
 
     def decidir(self, x: np.ndarray) -> Decisao:
         return decidir(self.probs(x)[0], self.classes, self.limiar, self.margem)
@@ -175,3 +202,16 @@ class ModeloLetras:
     @staticmethod
     def carregar(caminho) -> "ModeloLetras":
         return joblib.load(caminho)
+
+
+def probs_clipe(p_estatico: dict, p_movimento: dict | None) -> dict:
+    """Junta os dois modelos numa única distribuição sobre as 26 letras.
+    O modelo de movimento diz se o clipe tem letra com movimento ou não (∅);
+    a parte "não" é repartida entre as letras estáticas segundo o modelo
+    estático:  P(B) = P(∅) * P_est(B)   e   P(J) = P_mov(J)."""
+    if p_movimento is None:
+        return dict(p_estatico)
+    nada = p_movimento.get(TRANSICAO, 0.0)
+    out = {l: nada * p for l, p in p_estatico.items()}
+    out.update({l: p for l, p in p_movimento.items() if l != TRANSICAO})
+    return out

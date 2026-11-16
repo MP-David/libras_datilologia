@@ -155,6 +155,24 @@ def distancia_pose(a: np.ndarray, b: np.ndarray, mao: str = "Right") -> float:
     return float(np.linalg.norm(normalizar_mao(a, mao) - normalizar_mao(b, mao), axis=1).mean())
 
 
+def quadros_estaveis(seq: np.ndarray, mao: str = "Right",
+                     limiar: float = config.LIMIAR_MUDANCA_POSE) -> list[int]:
+    """Índices dos quadros em que a letra JÁ ESTÁ FORMADA: o trecho final do
+    clipe com a mesma forma de mão do último quadro. Os quadros do começo,
+    com a mão ainda chegando na letra, ficam de fora — eles não são a letra e,
+    se usados, ensinam errado (ex.: mão aberta rotulada como A)."""
+    ok = np.flatnonzero(~np.isnan(seq).any(axis=(1, 2)))
+    if len(ok) == 0:
+        return []
+    ref = seq[ok[-1]]
+    saida = []
+    for i in ok[::-1]:
+        if distancia_pose(seq[i], ref, mao) >= limiar:
+            break
+        saida.append(int(i))
+    return saida[::-1]
+
+
 # ---------------------------------------------------------------------------
 # Aumento de dados (só no treino)
 # ---------------------------------------------------------------------------

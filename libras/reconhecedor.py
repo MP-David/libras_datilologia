@@ -24,8 +24,8 @@ from pathlib import Path
 import numpy as np
 
 from . import config
-from .features import deslocamento, distancia_pose, features_dinamicas, features_estaticas
-from .modelo import TRANSICAO, Decisao, ModeloLetras, decidir
+from .features import deslocamento, distancia_pose, features_estaticas, quadros_estaveis
+from .modelo import TRANSICAO, Decisao, ModeloLetras, decidir, probs_clipe
 
 
 @dataclass
@@ -60,27 +60,38 @@ def reconhecer_foto(mod_est: ModeloLetras, pts, mao) -> Decisao:
 
 
 def reconhecer_clipe(mod_est, mod_din, seq: np.ndarray, mao: str) -> tuple[Decisao, bool]:
-    """Clipe com UMA letra. Se houve movimento -> modelo dinâmico;
-    senão -> média das probabilidades estáticas nos quadros com mão."""
-    ok = ~np.isnan(seq).any(axis=(1, 2))
-    validos = [q for q in seq[ok]]
-    if len(validos) < 3:
-        return Decisao(None, 0.0, "mão não encontrada em quadros suficientes"), False
-    mexeu = deslocamento(validos) > config.LIMIAR_MOVIMENTO
-    if mexeu:
-        if mod_din is None:
-            return Decisao(None, 0.0, "movimento detectado, mas não há modelo de letras com movimento"), True
-        f = features_dinamicas(seq, mao)
-        if f is None:
-            return Decisao(None, 0.0, "sequência curta demais"), True
-        return mod_din.decidir(f), True
-    X = np.stack([features_estaticas(q, mao) for q in validos])
+    """Clipe com UMA letra (qualquer das 26).
+
+    1. Quadros em que a letra já está formada (fim do clipe) -> modelo estático.
+    2. Clipe inteiro -> modelo de movimento, que diz H/J/K/X/Y/Z ou ∅ ("não é
+       letra com movimento": mão parada, se ajeitando ou trocando de letra).
+    3. As duas respostas viram uma única probabilidade sobre as 26 letras
+       (modelo.probs_clipe) e a regra LETRA / REPITA é aplicada nela.
+    Não há mais limiar fixo de "a mão se mexeu?": quem grava uma letra parada
+    quase sempre mexe a mão no começo, e isso fazia o clipe virar REPITA.
+    Retorna (decisão, se a letra escolhida é uma letra com movimento)."""
+    estaveis = quadros_estaveis(seq, mao)
+    if not estaveis:
+        return Decisao(None, 0.0, "nenhuma mão encontrada no clipe"), False
+    X = np.stack([features_estaticas(seq[i], mao) for i in estaveis])
     P = mod_est.probs(X)
-    d = decidir(P.mean(0), mod_est.classes, mod_est.limiar, mod_est.margem)
-    concord = (P.argmax(1) == P.mean(0).argmax()).mean()
-    if d.aceita and concord < config.CONCORDANCIA_MINIMA:
-        return Decisao(None, d.confianca, f"sinal instável ({concord:.0%} dos quadros concordam)", d.top), False
-    return d, False
+    p_est = dict(zip(mod_est.classes, P.mean(0)))
+    p_mov = None
+    if mod_din is not None:
+        v = mod_din.vetor(seq, mao)
+        if v is not None:
+            p_mov = dict(zip(mod_din.classes, mod_din.probs(v)[0]))
+    comb = probs_clipe(p_est, p_mov)
+    letras = list(comb)
+    limiar = (mod_din.info.get("limiar_clipe", mod_est.limiar) if p_mov is not None else mod_est.limiar)
+    d = decidir(np.array([comb[l] for l in letras]), letras, limiar, mod_est.margem)
+    dinamica = d.top[0][0] in config.LETRAS_DINAMICAS if d.top else False
+    if d.aceita and not dinamica and len(estaveis) >= 3:
+        concord = float((np.array(mod_est.classes)[P.argmax(1)] == d.letra).mean())
+        if concord < config.CONCORDANCIA_MINIMA:
+            return Decisao(None, d.confianca, f"sinal instável ({concord:.0%} dos quadros concordam)",
+                           d.top), False
+    return d, dinamica
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +204,7 @@ class TradutorContinuo:
         if self.mod_din is None:
             self.estado = "OBSERVANDO"
             return None
-        f = features_dinamicas(seg, self.mao)
+        f = self.mod_din.vetor(seg, self.mao)
         if f is None:
             return None
         d = self.mod_din.decidir(f)

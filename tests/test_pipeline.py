@@ -1,4 +1,4 @@
-"""Testes rápidos com dados sintéticos (não precisam de câmera nem do MediaPipe).
+"""Testes unitários com mãos sintéticas (não precisam de câmera, MediaPipe nem dataset).
 
     python -m pytest -q        ou        python tests/test_pipeline.py
 """
@@ -10,11 +10,11 @@ from sklearn.ensemble import ExtraTreesClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from libras import config, sintetico as S                                    # noqa: E402
+import maos_sinteticas as S                                                  # noqa: E402
 from libras.features import (N_FEATURES_ESTATICAS, features_dinamicas,        # noqa: E402
-                             features_estaticas)
+                             features_estaticas, quadros_estaveis)
 from libras.modelo import (TRANSICAO, ModeloLetras, decidir, matriz_dinamica,  # noqa: E402
-                           matriz_estatica, sintetizar_transicoes)
+                           matriz_estatica, probs_clipe, sintetizar_transicoes)
 from libras.reconhecedor import TradutorContinuo, reconhecer_clipe, reconhecer_foto  # noqa: E402
 
 RNG = np.random.default_rng(3)
@@ -140,6 +140,53 @@ def test_pose_ambigua_pede_repeticao():
     eventos = [e for _ in range(12) if (e := tr.processar(meio + [300, 200, 0], "Right"))]
     assert eventos, "deveria haver uma decisão"
     assert eventos[0].tipo == "REPITA" or eventos[0].letra in ("M", "N")
+
+
+def _chegada(pose, letra, rng, n_chegada=5, n_parado=10):
+    """Clipe de letra PARADA como a equipe grava: a mão chega na letra (vindo de
+    outra forma e se deslocando) e depois fica parada."""
+    c = np.array([320., 240, 0])
+    ini = pose(rng.choice(["B", "C", "O"])) + c + [rng.uniform(-60, 60), 80, 0]
+    fim = pose(letra) + c
+    w = np.linspace(0, 1, n_chegada)[:, None, None]
+    return np.concatenate([(1 - w) * ini + w * fim,
+                           np.stack([pose(letra) + c for _ in range(n_parado)])]).astype(np.float32)
+
+
+def test_quadros_estaveis_ignora_chegada():
+    pose, rng = _pessoa_nova(31)
+    seq = _chegada(pose, "A", rng)
+    est = quadros_estaveis(seq)
+    assert est[-1] == len(seq) - 1
+    assert len(est) >= 9 and est[0] >= 3, est      # o começo da chegada fica de fora
+
+
+def test_probs_clipe_soma_um():
+    comb = probs_clipe({"A": .7, "B": .3}, {TRANSICAO: .6, "J": .4})
+    assert np.isclose(sum(comb.values()), 1)
+    assert np.isclose(comb["A"], .42) and np.isclose(comb["J"], .4) and TRANSICAO not in comb
+
+
+def test_clipe_de_letra_parada_com_chegada():
+    """Regressão: clipe de letra parada em que a mão se ajeita no começo virava
+    REPITA (era lido como movimento). Com o ∅ treinado com clipes reais de letras
+    paradas, o resultado tem de ser a letra."""
+    rng = np.random.default_rng(5)
+    paradas = []
+    for i in range(4):
+        e, _ = S.gerar_sinalizador(f"c{i}", TPL, rng, n_est=2, n_din=0)
+        for amostra in e:
+            pose_i = (lambda l, a=amostra: a["pts"] - a["pts"][0] if l == a["letra"] else
+                      S.mao(TPL[l]["flex"], TPL[l]["abert"], TPL[l]["polegar"], TPL[l]["roll"], TPL[l]["yaw"], 95))
+            paradas.append({"seq": _chegada(pose_i, amostra["letra"], rng), "mao": "Right",
+                            "letra": TRANSICAO, "sinalizador": f"c{i}", "origem": "local"})
+    X, y, _ = matriz_dinamica(DIN + sintetizar_transicoes(EST, 30) + paradas, 2)
+    md = ModeloLetras("dinamico", ExtraTreesClassifier(300, random_state=0).fit(X, y), [])
+    md.classes = list(md.estimador.classes_)
+    pose, rng = _pessoa_nova(41)
+    for letra in ("L", "B", "W"):
+        d, dinamica = reconhecer_clipe(ME, md, _chegada(pose, letra, rng), "Right")
+        assert d.letra == letra and not dinamica, (letra, d)
 
 
 if __name__ == "__main__":
